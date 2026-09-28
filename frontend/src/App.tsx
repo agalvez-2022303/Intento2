@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { TileSim } from '@/ui/TileSim';
 import { BeamSim } from '@/ui/BeamSim';
 import { CadEditor } from '@/ui/CadEditor';
@@ -30,6 +30,14 @@ export default function App() {
     if (typeof window !== 'undefined') window.location.hash = t;
   };
   const app = useApp();
+  useEffect(() => {
+    const onHash = () => {
+      const h = window.location.hash.replace('#', '') as Tab;
+      if (VALID.includes(h)) setTabState(h);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
   const busy = (tab === 'tile' && app.tileBusy) || (tab === 'beam' && app.beamBusy);
 
   return (
