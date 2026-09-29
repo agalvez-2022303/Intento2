@@ -1,24 +1,26 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import uPlot from 'uplot';
 import { useApp } from './store';
 import { Viewer3D, ViewerHandle } from './Viewer3D';
 import { Section, Slider, Select, StatSI, Stat } from './controls';
-import { UPlotChart, baseAxes, CHART } from './UPlotChart';
+import { UPlotChart, UPlotHandle, baseAxes, CHART, vLinePlugin } from './UPlotChart';
 import { formatSI } from '../core/units';
 import { RANGES } from '../sim/defaults';
 import { exportBeamCSV, exportBeamSummary } from './exporters';
-import { GitCompare, Download, FileJson, Boxes, X } from 'lucide-react';
+import { GitCompare, Download, FileJson, Boxes, X, Radio, Square } from 'lucide-react';
 
 function lineOpts(
   xLabel: string,
   yLabel: string,
   series: { label: string; color: string; dash?: number[] }[],
-  logX = false
+  logX = false,
+  plugins: uPlot.Plugin[] = []
 ): Omit<uPlot.Options, 'width' | 'height'> {
   return {
     axes: baseAxes(xLabel, yLabel),
     legend: { show: true },
     cursor: { points: { size: 5 } },
+    plugins,
     scales: { x: logX ? { distr: 3 } : { time: false } },
     series: [
       {},
@@ -57,6 +59,54 @@ export const BeamSim: React.FC = () => {
   const fileRef = useRef<HTMLInputElement>(null);
   const [modeIndex, setModeIndex] = useState(0);
 
+  const roptRef = useRef<number | null>(null);
+  roptRef.current = r?.Ropt ?? null;
+  const sweepRef = useRef({ on: false, f: 0 });
+  const driveRef = useRef({ on: false, ampNorm: 0 });
+  const frfChart = useRef<UPlotHandle>(null);
+  const [sweeping, setSweeping] = useState(false);
+  const [sweepInfo, setSweepInfo] = useState<{ f: number; P: number } | null>(null);
+
+  useEffect(() => {
+    if (!sweeping || !r) {
+      sweepRef.current = { on: false, f: 0 };
+      driveRef.current = { on: false, ampNorm: 0 };
+      frfChart.current?.redraw();
+      if (!sweeping) setSweepInfo(null);
+      return;
+    }
+    const duration = 16000;
+    const t0 = performance.now();
+    const fMin = r.frf.f[0];
+    const fMax = r.frf.f[r.frf.f.length - 1];
+    const pPeak = r.pModelPeak || 1;
+    let raf = 0;
+    let lastInfo = 0;
+    const loop = () => {
+      const el = performance.now() - t0;
+      const frac = (el % duration) / duration;
+      const f = fMin + frac * (fMax - fMin);
+      const P = resample(r.frf.f, r.frf.P, [f])[0];
+      const ampNorm = Math.max(0.02, Math.min(1, Math.sqrt(P / pPeak)));
+      sweepRef.current = { on: true, f };
+      driveRef.current = { on: true, ampNorm };
+      frfChart.current?.redraw();
+      if (el - lastInfo > 120) {
+        lastInfo = el;
+        setSweepInfo({ f, P });
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      cancelAnimationFrame(raf);
+      sweepRef.current = { on: false, f: 0 };
+      driveRef.current = { on: false, ampNorm: 0 };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      frfChart.current?.redraw();
+    };
+  }, [sweeping, r]);
+
   const frf: uPlot.AlignedData = useMemo(() => {
     if (!r) return [[], []];
     if (cmp) return [r.frf.f, r.frf.P, resample(cmp.result.frf.f, cmp.result.frf.P, r.frf.f)];
@@ -68,11 +118,17 @@ export const BeamSim: React.FC = () => {
   const pt: uPlot.AlignedData = useMemo(() => (r ? [r.timeSeries.t, r.timeSeries.P] : [[], []]), [r]);
 
   const hud = r
-    ? [
-        { k: 'f₁ resonancia', v: formatSI(r.modes[0]?.freq ?? 0, 'Hz') },
-        { k: 'P máx (modelo)', v: formatSI(r.pModelPeak, 'W') },
-        { k: 'R óptima', v: formatSI(r.Ropt, 'Ω') },
-      ]
+    ? sweeping && sweepInfo
+      ? [
+          { k: '► Barrido f', v: formatSI(sweepInfo.f, 'Hz') },
+          { k: 'P instantánea', v: formatSI(sweepInfo.P, 'W') },
+          { k: 'R óptima', v: formatSI(r.Ropt, 'Ω') },
+        ]
+      : [
+          { k: 'f₁ resonancia', v: formatSI(r.modes[0]?.freq ?? 0, 'Hz') },
+          { k: 'P máx (modelo)', v: formatSI(r.pModelPeak, 'W') },
+          { k: 'R óptima', v: formatSI(r.Ropt, 'Ω') },
+        ]
     : [];
 
   return (
@@ -238,6 +294,15 @@ export const BeamSim: React.FC = () => {
               </div>
             )}
           </div>
+          <button
+            className={`btn sm ${sweeping ? 'primary' : ''}`}
+            style={{ width: '100%', marginBottom: 12 }}
+            onClick={() => setSweeping((s) => !s)}
+            data-testid="beam-sweep"
+          >
+            {sweeping ? <Square size={13} /> : <Radio size={13} />}
+            {sweeping ? ' Detener barrido' : ' Barrido de frecuencia'}
+          </button>
           <Slider
             label="Factor de escala (deformada)"
             value={p.scaleFactor}
@@ -301,10 +366,19 @@ export const BeamSim: React.FC = () => {
       </div>
 
       <div className="stage">
-        <Viewer3D ref={viewerRef} kind="beam" beamParams={p} beamResult={r} modeIndex={modeIndex} hud={hud} />
+        <Viewer3D
+          ref={viewerRef}
+          kind="beam"
+          beamParams={p}
+          beamResult={r}
+          modeIndex={sweeping ? 0 : modeIndex}
+          hud={hud}
+          beamDriveRef={driveRef}
+        />
         <div className="charts" data-testid="beam-charts">
           <ChartCard title="Potencia vs frecuencia (FRF)" sub={r ? `pico ${formatSI(r.peakFreq, 'Hz')}` : ''}>
             <UPlotChart
+              ref={frfChart}
               data={frf}
               opts={lineOpts(
                 'f (Hz)',
@@ -314,13 +388,21 @@ export const BeamSim: React.FC = () => {
                       { label: 'actual', color: CHART.accent },
                       { label: cmp.label, color: CHART.violet, dash: [5, 3] },
                     ]
-                  : [{ label: 'P', color: CHART.accent }]
+                  : [{ label: 'P', color: CHART.accent }],
+                false,
+                [vLinePlugin(() => (sweepRef.current.on ? sweepRef.current.f : null), CHART.green, '► f')]
               )}
               redrawKey={cmp ? 'bf-cmp' : 'bf'}
             />
           </ChartCard>
           <ChartCard title="Potencia vs R_load" sub={r ? `R_opt ${formatSI(r.Ropt, 'Ω')}` : ''}>
-            <UPlotChart data={pvr} opts={lineOpts('R (Ω)', 'P (W)', [{ label: 'P', color: CHART.amber }], true)} redrawKey="br" />
+            <UPlotChart
+              data={pvr}
+              opts={lineOpts('R (Ω)', 'P (W)', [{ label: 'P', color: CHART.amber }], true, [
+                vLinePlugin(() => roptRef.current, CHART.accent, 'R_opt'),
+              ])}
+              redrawKey="br"
+            />
           </ChartCard>
           <ChartCard title="Potencia vs masa de punta" sub="g">
             <UPlotChart data={pvm} opts={lineOpts('m (g)', 'P (W)', [{ label: 'P', color: CHART.green }])} redrawKey="bm" />

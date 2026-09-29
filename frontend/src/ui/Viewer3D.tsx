@@ -22,6 +22,7 @@ interface Props {
   beamResult?: BeamResult | null;
   modeIndex?: number;
   hud?: { k: string; v: string }[];
+  beamDriveRef?: React.MutableRefObject<{ on: boolean; ampNorm: number }>;
 }
 
 const VIEWS: { id: ViewMode; icon: React.ReactNode; label: string }[] = [
@@ -32,7 +33,7 @@ const VIEWS: { id: ViewMode; icon: React.ReactNode; label: string }[] = [
 ];
 
 export const Viewer3D = forwardRef<ViewerHandle, Props>(function Viewer3D(props, ref) {
-  const { kind, tileParams, tileResult, beamParams, beamResult, modeIndex = 0, hud } = props;
+  const { kind, tileParams, tileResult, beamParams, beamResult, modeIndex = 0, hud, beamDriveRef } = props;
   const wrapRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<SceneViewer | null>(null);
   const tileMesh = useRef<TileMesh | null>(null);
@@ -43,8 +44,8 @@ export const Viewer3D = forwardRef<ViewerHandle, Props>(function Viewer3D(props,
   const [playing, setPlaying] = useState(true);
   const [view, setView] = useState<ViewMode>('perspective');
 
-  const liveRef = useRef({ tileParams, tileResult, beamParams, beamResult, modeIndex });
-  liveRef.current = { tileParams, tileResult, beamParams, beamResult, modeIndex };
+  const liveRef = useRef({ tileParams, tileResult, beamParams, beamResult, modeIndex, beamDriveRef });
+  liveRef.current = { tileParams, tileResult, beamParams, beamResult, modeIndex, beamDriveRef };
 
   useEffect(() => {
     if (!wrapRef.current) return;
@@ -69,7 +70,9 @@ export const Viewer3D = forwardRef<ViewerHandle, Props>(function Viewer3D(props,
       if (kind === 'beam' && beamMesh.current && L.beamParams) {
         const p = L.beamParams;
         const modeFreqDisplay = 1.1; // Hz visual (cámara lenta) para apreciar la forma modal
-        beamMesh.current.update(1, 2 * Math.PI * modeFreqDisplay * t, p.scaleFactor);
+        const drv = L.beamDriveRef?.current;
+        const amp = drv?.on ? drv.ampNorm : 1;
+        beamMesh.current.update(amp, 2 * Math.PI * modeFreqDisplay * t, p.scaleFactor);
       }
     };
     return () => {

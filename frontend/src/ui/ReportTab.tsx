@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from './store';
 import { ChartJsCanvas, gridScales } from './ChartJsCanvas';
 import { formatSI } from '../core/units';
-import { Printer } from 'lucide-react';
+import { generateReportPdf } from './pdf';
+import { Printer, FileDown, Loader2 } from 'lucide-react';
 
 function downsample<T>(arr: T[], max: number): T[] {
   if (arr.length <= max) return arr;
@@ -29,6 +30,18 @@ export const ReportTab: React.FC = () => {
   const piezoB = app.materials.find((m) => m.id === b.piezoId);
   const subB = app.materials.find((m) => m.id === b.substrateId);
   const now = new Date().toLocaleString('es-ES');
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const downloadPdf = async () => {
+    setPdfBusy(true);
+    try {
+      await generateReportPdf({
+        tile: { params: t, result: tr, piezoName: piezoT?.name ?? '—' },
+        beam: { params: b, result: br, piezoName: piezoB?.name ?? '—', subName: subB?.name ?? '—' },
+      });
+    } finally {
+      setPdfBusy(false);
+    }
+  };
 
   const tileEvsN =
     tr &&
@@ -75,9 +88,13 @@ export const ReportTab: React.FC = () => {
   return (
     <div className="page report" data-testid="report-page">
       <div className="maxw">
-        <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-          <button className="btn primary" onClick={() => window.print()} data-testid="report-print">
-            <Printer size={15} /> Imprimir / Exportar PDF
+        <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 12 }}>
+          <button className="btn" onClick={() => window.print()} data-testid="report-print">
+            <Printer size={15} /> Imprimir
+          </button>
+          <button className="btn primary" onClick={downloadPdf} disabled={pdfBusy} data-testid="report-pdf">
+            {pdfBusy ? <Loader2 size={15} className="spin" /> : <FileDown size={15} />}
+            {pdfBusy ? 'Generando…' : 'Descargar PDF'}
           </button>
         </div>
 

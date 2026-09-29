@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { TileSim } from '@/ui/TileSim';
 import { BeamSim } from '@/ui/BeamSim';
 import { CadEditor } from '@/ui/CadEditor';
 import { MaterialsEditor } from '@/ui/MaterialsEditor';
 import { ReportTab } from '@/ui/ReportTab';
 import { useApp } from '@/ui/store';
-import { Footprints, Activity, Boxes, Database, FileText, Zap, Cpu } from 'lucide-react';
+import { exportJSON } from '@/ui/exporters';
+import { Footprints, Activity, Boxes, Database, FileText, Zap, Cpu, Save, FolderOpen } from 'lucide-react';
 
 type Tab = 'tile' | 'beam' | 'cad' | 'materials' | 'report';
 
@@ -40,6 +41,32 @@ export default function App() {
   }, []);
   const busy = (tab === 'tile' && app.tileBusy) || (tab === 'beam' && app.beamBusy);
 
+  const projFile = useRef<HTMLInputElement>(null);
+  const saveProject = () => {
+    exportJSON(
+      {
+        app: 'PiezoLab',
+        version: 1,
+        savedAt: new Date().toISOString(),
+        materials: app.materials,
+        tile: app.tileParams,
+        beam: app.beamParams,
+      },
+      'proyecto_piezolab.json'
+    );
+  };
+  const loadProject = async (file: File) => {
+    try {
+      const data = JSON.parse(await file.text());
+      if (data.app !== 'PiezoLab') throw new Error('Formato de proyecto no reconocido');
+      if (Array.isArray(data.materials)) app.replaceMaterials(data.materials);
+      if (data.tile) app.patchTile(data.tile);
+      if (data.beam) app.patchBeam(data.beam);
+    } catch (e) {
+      alert('No se pudo abrir el proyecto: ' + (e as Error).message);
+    }
+  };
+
   return (
     <div className="shell">
       <header className="topbar">
@@ -67,6 +94,20 @@ export default function App() {
           ))}
         </nav>
         <div className="spacer" />
+        <button className="btn sm ghost" onClick={saveProject} data-testid="project-save" title="Guardar proyecto (JSON)">
+          <Save size={14} /> Guardar
+        </button>
+        <button className="btn sm ghost" onClick={() => projFile.current?.click()} data-testid="project-open" title="Abrir proyecto (JSON)">
+          <FolderOpen size={14} /> Abrir
+        </button>
+        <input
+          ref={projFile}
+          type="file"
+          accept=".json"
+          style={{ display: 'none' }}
+          data-testid="project-file"
+          onChange={(e) => e.target.files?.[0] && loadProject(e.target.files[0])}
+        />
         <span className="pill" data-testid="worker-status">
           <Cpu size={12} style={{ marginRight: 5, verticalAlign: 'middle' }} />
           {busy ? 'calculando…' : 'solver listo'}

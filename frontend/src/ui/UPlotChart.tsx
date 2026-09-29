@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import uPlot from 'uplot';
 
 interface Props {
@@ -9,11 +9,20 @@ interface Props {
   testId?: string;
 }
 
-export const UPlotChart: React.FC<Props> = ({ data, opts, redrawKey = 'x', testId }) => {
+export interface UPlotHandle {
+  redraw: () => void;
+}
+
+export const UPlotChart = forwardRef<UPlotHandle, Props>(function UPlotChart(
+  { data, opts, redrawKey = 'x', testId },
+  ref
+) {
   const host = useRef<HTMLDivElement>(null);
   const plot = useRef<uPlot | null>(null);
   const dataRef = useRef(data);
   dataRef.current = data;
+
+  useImperativeHandle(ref, () => ({ redraw: () => plot.current?.redraw(true, true) }), []);
 
   useEffect(() => {
     if (!host.current) return;
@@ -38,7 +47,36 @@ export const UPlotChart: React.FC<Props> = ({ data, opts, redrawKey = 'x', testI
   }, [data]);
 
   return <div ref={host} data-testid={testId} style={{ width: '100%', height: '100%' }} />;
-};
+});
+
+/** Plugin uPlot: dibuja una línea vertical punteada en un valor X (lee un getter en vivo). */
+export function vLinePlugin(getX: () => number | null, color: string, label: string): uPlot.Plugin {
+  return {
+    hooks: {
+      draw: (u: uPlot) => {
+        const x = getX();
+        if (x == null || !isFinite(x)) return;
+        const cx = Math.round(u.valToPos(x, 'x', true));
+        const { ctx } = u;
+        const b: any = u.bbox;
+        if (cx < b.left || cx > b.left + b.width) return;
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(cx, b.top);
+        ctx.lineTo(cx, b.top + b.height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = color;
+        ctx.font = '600 20px IBM Plex Mono';
+        ctx.fillText(label, cx + 6, b.top + 22);
+        ctx.restore();
+      },
+    },
+  };
+}
 
 /** Colores de las series. */
 export const CHART = {
