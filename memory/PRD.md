@@ -40,12 +40,18 @@ que validen el solver contra valores de referencia.
 - Fase 4: Editor CAD (geometría en vivo, 4 vistas, import STL/glTF, export STL/CSV/JSON), Materiales editables, Reporte (Chart.js + imprimir/PDF), comparación de configuraciones.
 - Validado por testing agent: 100% de funcionalidades de UI (5 pestañas, 3D, sliders reactivos, exports, persistencia).
 
+## Mejoras (2026-06) — 4 mejoras solicitadas, completadas y validadas
+- Reporte PDF descargable con gráficas embebidas (jsPDF + Chart.js) → `src/ui/pdf.ts`, botón en ReportTab (informe_piezolab.pdf ~2.3MB).
+- Marca visual de R_opt (línea vertical punteada + etiqueta) sobre la gráfica Potencia vs R_load → `vLinePlugin` en `UPlotChart.tsx` usado en `BeamSim.tsx`.
+- Barrido de frecuencia animado sincronizado con la deformada 3D de la viga (HUD en vivo: Barrido f / P instantánea; amplitud 3D modulada por P(f)) → efecto de barrido en `BeamSim.tsx` + `beamDriveRef` en `Viewer3D.tsx`.
+- Guardar/abrir proyecto completo (JSON con materiales + geometría tile/beam) desde la barra superior → `saveProject`/`loadProject` en `App.tsx`.
+- Fix crash Viga: uPlot `redraw()` omitía `convergeSize()` → `axis._found` null en `drawAxesGrid`. Corregido pasando `recalcAxes=true` (`plot.redraw(true, true)`) en `UPlotChart.tsx`.
+- Validado: 23/23 Vitest verdes + testing_agent frontend 13/13 (iteration_2.json).
+
 ## Backlog (futuro)
-- P1: marcador visual de R_opt sobre la gráfica Potencia-vs-R; leyenda de valores en vivo en gráficas.
-- P1: exportación del reporte a PDF con las gráficas embebidas (actualmente vía impresión del navegador).
-- P2: barrido de frecuencia animado (sweep) sincronizado con la deformada 3D de la viga.
 - P2: soporte de conexión piezo serie/paralelo seleccionable en la viga.
-- P2: guardar/cargar proyectos completos (JSON) con geometría + materiales + resultados.
+- P2: incluir resultados numéricos (además de geometría/materiales) en el JSON de proyecto y en el PDF.
+- P3: eje X logarítmico opcional en la FRF para visualizar mejor el pico de resonancia estrecho.
 
 ## Próximas tareas sugeridas
 - Ver "Next Action Items" del resumen de finish.
